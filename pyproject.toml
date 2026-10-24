@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "toolframe-web"
+version = "0.1.0"
+description = "HTML applications and sealed browser assets for Toolframe"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+requires-python = ">=3.14"
+dependencies = ["toolframe-sdk==0.4.0+web.1", "starlette>=0.52,<1", "uvicorn==0.42.0", "jinja2>=3.1.6,<4", "python-multipart>=0.0.22,<1"]
+
+[project.entry-points."toolframe.plugins"]
+web = "toolframe_web.plugin:plugin"
+
+[project.scripts]
+toolframe-web = "toolframe_web.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "pytest-asyncio>=1,<2", "httpx>=0.28,<1", "ruff==0.16.8"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py314"
+
+[tool.uv.sources]
+toolframe-sdk = { path = "../toolframe-sdk", editable = true }
