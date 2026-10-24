@@ -6,14 +6,13 @@ business services with the visitor's existing permissions.
 
 ## Quick start
 
-Use Python 3.14+, Core 0.8 and the matching local SDK `0.4.0+web.1` wheel. Point
-Core's package settings and `TOOLFRAME_WHEELHOUSE` at the supplied wheelhouse.
-Discover and generate from a matching Web wheel; an initialized application or
-enabled provider is not needed for this authoring step:
+Use Python 3.14+, Core 0.8 and SDK 0.4.1. Discover and generate the Notes
+template from its package; an initialized application or enabled provider is not
+needed for this authoring step:
 
 ```sh
-toolframe --home APP template show toolframe-web/notes --from wheel:/path/to/toolframe_web-0.1.0-py3-none-any.whl --json
-toolframe --home APP plugin new notes --from wheel:/path/to/toolframe_web-0.1.0-py3-none-any.whl --template toolframe-web/notes
+toolframe --home APP template show toolframe-web/notes --from pypi:toolframe-web==0.1.0 --json
+toolframe --home APP plugin new notes --from pypi:toolframe-web==0.1.0 --template toolframe-web/notes
 toolframe --home APP web prepare APP/plugins/notes
 
 # Start APP separately, then explicitly install its runtime providers:

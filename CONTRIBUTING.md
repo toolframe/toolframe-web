@@ -1,15 +1,16 @@
 # Contributing
 
-Use Python 3.14+ and a locally built `toolframe-sdk==0.4.0+web.1` wheel. Install
-this package and its development dependencies with that wheelhouse:
+Use Python 3.14.7 and uv 0.12.8. Run the same fresh-environment validation as CI:
 
 ```sh
-uv sync --no-sources --group dev --find-links /path/to/wheelhouse
-uv run --no-sync pytest -q
-uv run --no-sync ruff check src tests scripts
-uv run --no-sync ruff format --check src tests scripts
-uv build --wheel
+python3.14 scripts/validate_release.py --output build/release-dist
 ```
+
+The output directory must be absent or empty. Before an SDK release is available,
+append `--wheelhouse /path/to/matching-wheels`. The validator builds wheel and
+sdist, checks package metadata and licenses, runs the package suite against the
+installed wheel, and checks independent wheel and sdist consumers. See
+[CI](docs/ci.md) and [releasing](docs/releasing.md).
 
 Package tests cover preparation, sealed assets, HTTP handling and lifecycle
 boundaries. Installed acceptance additionally exercises the matching Core and
