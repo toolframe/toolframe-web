@@ -6,6 +6,19 @@ in a separate staging directory, then builds a Python wheel. Source `add`,
 does not run preparation. Runtime publication loads the sealed manifest and
 verifies the wheel's bytes; it never fetches or compiles browser assets.
 
+The Web distribution owns preparation and exposes it through the wheel's static
+authoring manifest. Generated projects declare the selected package version:
+
+```toml
+[tool.toolframe.authoring]
+source = "pypi:toolframe-web==0.1.0"
+```
+
+Core resolves that distribution in an isolated authoring environment, invokes its
+preparation entry and builds from the resulting staged source. Use matching local
+wheels when the version's authoring metadata has not been published. Older Web
+recipes retain `web prepare` compatibility using the `web` extra's requirement.
+
 ## Explicit browser files
 
 Place `web-assets.toml` at the project root:
