@@ -16,7 +16,6 @@ from urllib.parse import parse_qs
 import anyio
 from jinja2 import DictLoader, Environment, PackageLoader, StrictUndefined
 from starlette.applications import Starlette
-from starlette.datastructures import UploadFile
 from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -30,13 +29,15 @@ from toolframe_sdk import (
     WebContext,
     WebRequest,
     WebResponse,
-    WebUpload,
     load_object,
 )
 from toolframe_sdk.http import HttpServer
 from toolframe_sdk.web import WebAppCatalog
 
+from .asset_delivery import deliver_asset
 from .assets import AssetSet
+from .policy import application_policy
+from .request_body import FORM_TYPES, RequestBody
 
 
 @dataclass(frozen=True)
@@ -58,6 +59,7 @@ ERROR_STATUS = {
     "stale_catalog": 409,
     "web_context_closed": 409,
     "invalid_request": 422,
+    "request_too_large": 413,
     "rate_limited": 429,
     "presentation_unavailable": 503,
     "auth_unavailable": 503,
@@ -268,46 +270,12 @@ class WebProvider(Plugin):
             "x-toolframe-request-id", secrets.token_hex(12)
         )
         context = None
-        parsed = None
+        body = None
         try:
-            if request.url.path.startswith("/_tf/assets/"):
-                asset = request.url.path.removeprefix("/_tf/assets/")
-                admission = await self.context.resource_admit(
-                    key, None, epoch=epoch, access_context=reference, asset=asset
-                )
-                checksum, _, path = asset.partition("/")
-                assets = app.assets
-                if checksum != assets.manifest.digest:
-                    if self.cache is None:
-                        raise PluginError(
-                            "web_asset_missing", "Previous asset set is unavailable"
-                        )
-                    assets = await asyncio.to_thread(
-                        AssetSet.cached, self.cache, checksum
-                    )
-                item = next(
-                    (file for file in assets.manifest.files if file.path == path), None
-                )
-                if item is None:
-                    raise PluginError("web_asset_missing", "Asset is not declared")
-                etag = '"' + item.sha256 + '"'
-                headers = {
-                    "ETag": etag,
-                    "X-Content-Type-Options": "nosniff",
-                    "Cache-Control": "public, max-age=31536000, immutable"
-                    if admission["visibility"] == "public"
-                    else "private, no-store",
-                    "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'; sandbox",
-                }
-                if request.headers.get("if-none-match") == etag:
-                    return Response(status_code=304, headers=headers)
-                return Response(
-                    b"" if request.method == "HEAD" else assets.content[path],
-                    media_type=item.media_type,
-                    headers=headers,
-                )
+            if request.scope["path"].startswith("/_tf/assets/"):
+                return await deliver_asset(self, request, app, key, epoch, reference)
             matches = [
-                (route, route.spec().match(request.url.path))
+                (route, route.spec().match(request.scope["path"]))
                 for route in app.app.routes
             ]
             matches = [
@@ -367,75 +335,31 @@ class WebProvider(Plugin):
                 )
             route, params = selected
             settings = self.context.endpoints.get("web", {})
-            max_body = settings.get("max_body_bytes", 8 * 1024 * 1024)
-            body = bytearray()
-            async for chunk in request.stream():
-                body.extend(chunk)
-                if len(body) > max_body:
-                    return JSONResponse(
-                        {
-                            "error": {
-                                "code": "request_too_large",
-                                "message": "Request exceeds the body limit",
-                            }
-                        },
-                        status_code=413,
-                    )
-            request._body = bytes(body)
-            form = None
-
-            async def parse_form():
-                nonlocal parsed, form
-                if form is not None:
-                    return form
-                parsed = await request.form(
-                    max_files=8, max_fields=128, max_part_size=max_body
-                )
-                values = {}
-                for name, value in parsed.multi_items():
-                    if isinstance(value, UploadFile):
-                        content = await value.read(4 * 1024 * 1024 + 1)
-                        if len(content) > 4 * 1024 * 1024:
-                            raise PluginError(
-                                "invalid_request", "Uploaded file exceeds 4 MiB"
-                            )
-                        value = WebUpload(
-                            value.filename or "",
-                            value.content_type or "application/octet-stream",
-                            content,
-                        )
-                    if name in values:
-                        raise PluginError(
-                            "invalid_request",
-                            "Duplicate form fields are not supported; use JSON arrays",
-                        )
-                    values[name] = value
-                form = MappingProxyType(values)
-                return form
-
-            csrf, revision = (
-                request.headers.get("x-csrf-token", ""),
-                request.headers.get("x-web-revision", ""),
-            )
-            if request.method not in {"GET", "HEAD", "OPTIONS"} and request.headers.get(
-                "content-type", ""
-            ).split(";", 1)[0] in {
-                "application/x-www-form-urlencoded",
-                "multipart/form-data",
-            }:
-                values = await parse_form()
-                csrf, revision = (
-                    csrf or values.get("_tf_csrf", ""),
-                    revision or values.get("_tf_revision", ""),
-                )
+            safe = request.method in {"GET", "HEAD", "OPTIONS"}
             admission = await self.context.resource_admit(
                 key,
                 route.id,
                 epoch=epoch,
                 access_context=reference,
-                csrf=csrf,
-                revision=revision,
+                phase="complete" if safe else "authorize",
             )
+            body = RequestBody(request, settings.get("max_body_bytes", 8 * 1024 * 1024))
+            await body.read()
+            if not safe:
+                csrf = request.headers.get("x-csrf-token", "")
+                revision = request.headers.get("x-web-revision", "")
+                if body.media_type in FORM_TYPES:
+                    values = await body.form()
+                    csrf = csrf or values.get("_tf_csrf", "")
+                    revision = revision or values.get("_tf_revision", "")
+                admission = await self.context.resource_admit(
+                    key,
+                    route.id,
+                    epoch=epoch,
+                    access_context=reference,
+                    csrf=csrf,
+                    revision=revision,
+                )
             if request.method == "OPTIONS":
                 return Response(
                     status_code=204,
@@ -459,12 +383,13 @@ class WebProvider(Plugin):
             context._assets, context._templates = app.assets, app.templates
             value = WebRequest(
                 request.method,
-                request.url.path,
+                request.scope["path"],
                 MappingProxyType(
                     {
                         key: tuple(values)
                         for key, values in parse_qs(
-                            request.url.query, keep_blank_values=True
+                            request.scope.get("query_string", b"").decode("ascii"),
+                            keep_blank_values=True,
                         ).items()
                     }
                 ),
@@ -477,8 +402,8 @@ class WebProvider(Plugin):
                         and not key.startswith("x-toolframe-")
                     }
                 ),
-                bytes(body),
-                parse_form,
+                body.content,
+                body.form,
             )
             async with asyncio.timeout(settings.get("request_timeout", 30)):
                 if inspect.iscoroutinefunction(route.handler):
@@ -503,29 +428,10 @@ class WebProvider(Plugin):
                     "connection",
                 }
             }
-            policy = {
-                "default-src": ("'none'",),
-                "script-src": ("'self'",),
-                "style-src": ("'self'",),
-                "img-src": ("'self'", "data:"),
-                "font-src": ("'self'",),
-                "connect-src": ("'self'",),
-                "worker-src": ("'none'",),
-                "base-uri": ("'none'",),
-                "object-src": ("'none'",),
-                "form-action": ("'self'",),
-                "frame-ancestors": ("'none'",),
-                **dict(app.catalog.csp),
-            }
-            if "'none'" not in policy["script-src"]:
-                policy["script-src"] = (
-                    *policy["script-src"],
-                    f"'nonce-{context.nonce}'",
-                )
             headers.update(
                 {
-                    "Content-Security-Policy": "; ".join(
-                        key + " " + " ".join(values) for key, values in policy.items()
+                    "Content-Security-Policy": application_policy(
+                        app.catalog, nonce=context.nonce
                     ),
                     "Cache-Control": "private, no-store",
                     "Vary": "HX-Request, Accept",
@@ -589,8 +495,8 @@ class WebProvider(Plugin):
         finally:
             if context:
                 context.close()
-            if parsed:
-                await parsed.close()
+            if body is not None:
+                await body.close()
 
 
 plugin = PluginDefinition(

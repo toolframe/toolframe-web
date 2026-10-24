@@ -314,3 +314,160 @@ async def test_plain_response_application_requires_no_template_directory(provide
     await plugin.prepare([resource], "plain")
     await plugin.commit("plain")
     assert (await client.get("/")).text == "plain"
+
+
+@pytest.mark.parametrize("encoding", ["urlencoded", "multipart"])
+@pytest.mark.parametrize("count,status", [(128, 200), (129, 422)])
+async def test_form_field_limit_is_shared_by_encodings(
+    provider, encoding, count, status
+):
+    _plugin, client, context, *_ = provider
+    context.endpoints["web"]["max_body_bytes"] = 64 * 1024
+    fields = {"body": "hello", **{f"f{i}": "x" for i in range(count - 1)}}
+    options = {"data": fields}
+    if encoding == "multipart":
+        options["files"] = {"file": ("note.txt", b"upload", "text/plain")}
+    response = await client.post("/", **options)
+    assert response.status_code == status
+
+
+@pytest.mark.parametrize("encoding", ["urlencoded", "multipart"])
+async def test_denied_post_does_not_read_or_parse_body(provider, monkeypatch, encoding):
+    from starlette.requests import Request
+
+    _plugin, client, context, *_ = provider
+    context.denied = True
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("A denied request must not read or parse its body")
+
+    monkeypatch.setattr(Request, "stream", forbidden)
+    monkeypatch.setattr(Request, "form", forbidden)
+    options = {"data": {"body": "hello"}}
+    if encoding == "multipart":
+        options["files"] = {"file": ("note.txt", b"upload", "text/plain")}
+    assert (await client.post("/", **options)).status_code == 403
+    assert context.calls[-1][2]["phase"] == "authorize"
+
+
+@pytest.mark.parametrize("body", ["body=%FF", "body=%", "body=%GG", "body=x&body=y"])
+async def test_urlencoded_invalid_encoding_and_duplicate_fields_fail(provider, body):
+    _plugin, client, *_ = provider
+    response = await client.post(
+        "/",
+        content=body,
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+    assert response.status_code == 422
+
+
+async def test_script_policy_changes_invalidate_asset_validator(provider):
+    plugin, client, context, _contexts, resource, assets = provider
+    admit = context.resource_admit
+
+    async def public_asset(*args, **kwargs):
+        result = await admit(*args, **kwargs)
+        return {"visibility": "public"} if kwargs.get("asset") else result
+
+    context.resource_admit = public_asset
+    module = sys.modules["provider_example"]
+    original = module.app()
+    module.app = lambda: WebApp(original.routes, csp={"worker-src": ("'self'",)})
+    await plugin.prepare([resource], "workers")
+    await plugin.commit("workers")
+    path = "/_tf/assets/" + assets.manifest.digest + "/app.js"
+    before = await client.get(path)
+    policy = before.headers["content-security-policy"]
+    assert "script-src 'self'" in policy and "connect-src 'self'" in policy
+    assert "sandbox" not in policy and "nonce-" not in policy
+    assert before.headers["cache-control"] == "public, max-age=0, must-revalidate"
+    module.app = lambda: WebApp(original.routes, csp={"connect-src": ("'none'",)})
+    await plugin.prepare([resource], "restricted")
+    await plugin.commit("restricted")
+    after = await client.get(path, headers={"if-none-match": before.headers["etag"]})
+    assert after.status_code == 200 and after.headers["etag"] != before.headers["etag"]
+    assert "connect-src 'none'" in after.headers["content-security-policy"]
+    assert (
+        await client.get(path, headers={"if-none-match": after.headers["etag"]})
+    ).status_code == 304
+
+
+@pytest.mark.parametrize(
+    "path,media_type", [("active.html", "text/html"), ("active.svg", "image/svg+xml")]
+)
+async def test_active_non_script_assets_keep_sandbox(provider, path, media_type):
+    from pathlib import Path
+
+    plugin, client, _context, _contexts, resource, assets = provider
+    root = Path(sys.modules["provider_example"].__file__).parent
+    content = b"<script>throw Error('must not execute')</script>"
+    item = AssetFile(
+        path=path,
+        size=len(content),
+        sha256=hashlib.sha256(content).hexdigest(),
+        media_type=media_type,
+    )
+    manifest = seal("web/public", [*assets.manifest.files, item])
+    (root / "web/public" / path).write_bytes(content)
+    (root / "web/assets.json").write_text(manifest.model_dump_json())
+    await plugin.prepare([resource], "active")
+    await plugin.commit("active")
+    response = await client.get("/_tf/assets/" + manifest.digest + "/" + path)
+    assert response.status_code == 200
+    assert (
+        response.headers["content-security-policy"]
+        == "default-src 'none'; frame-ancestors 'none'; sandbox"
+    )
+
+
+@pytest.mark.parametrize("identifier", ["a?b", "a#b", "香港 two words"])
+async def test_provider_uses_decoded_asgi_path_without_reparsing_as_url(
+    provider, identifier
+):
+    from toolframe_web import json
+
+    plugin, client, _context, _contexts, resource, _assets = provider
+
+    async def detail(request, ctx):
+        return json({"id": request.path_params["id"], "query": dict(request.query)})
+
+    route = WebRoute("detail", "/item/{id}", ("GET",), detail)
+    sys.modules["provider_example"].app = lambda: WebApp((route,))
+    await plugin.prepare([resource], "detail")
+    await plugin.commit("detail")
+    response = await client.get(route.spec().url({"id": identifier}) + "?q=a%3Fb%23c")
+    assert response.status_code == 200
+    assert response.json() == {"id": identifier, "query": {"q": ["a?b#c"]}}
+
+
+@pytest.mark.parametrize("encoding", ["urlencoded", "multipart"])
+@pytest.mark.parametrize("name,value", [("n" * 257, "x"), ("body", "雪" * 21846)])
+async def test_form_name_and_value_byte_limits(provider, encoding, name, value):
+    _plugin, client, context, *_ = provider
+    context.endpoints["web"]["max_body_bytes"] = 1024 * 1024
+    options = {"data": {name: value}}
+    if encoding == "multipart":
+        options["files"] = {"file": ("note.txt", b"x", "text/plain")}
+    assert (await client.post("/", **options)).status_code == 422
+
+
+async def test_multipart_files_close_when_proof_admission_fails(provider, monkeypatch):
+    from starlette.datastructures import UploadFile
+
+    _plugin, client, context, *_ = provider
+    original_admit, original_close = context.resource_admit, UploadFile.close
+    closed = []
+
+    async def admit(*args, **kwargs):
+        if kwargs.get("phase") != "authorize":
+            raise PluginError("csrf_failed", "Bad proof")
+        return await original_admit(*args, **kwargs)
+
+    async def close(upload):
+        await original_close(upload)
+        closed.append(upload.file.closed)
+
+    context.resource_admit = admit
+    monkeypatch.setattr(UploadFile, "close", close)
+    response = await client.post("/", files={"body": ("note.txt", b"x", "text/plain")})
+    assert response.status_code == 403 and closed == [True]

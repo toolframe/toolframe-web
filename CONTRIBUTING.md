@@ -18,6 +18,16 @@ forms, mount changes, update failures and retained business data. Neither test
 layer substitutes for the other. Platform/compiler and external-authentication
 combinations require their own execution evidence.
 
+For a browser qualification run against the installed wheel, use that
+environment's Python to run `tests/browser_probe.py --output build/browser-probe`.
+Open both printed URLs. The allowed app must report successful classic/module
+Worker imports, fetch and WASM, import maps, dynamic ESM, CSS URLs and SVG images.
+The restricted app must keep imports working while Worker fetch is blocked.
+Optional `--font PATH.woff2` and `--alpine PATH.js` accept licensed local inputs;
+the Alpine input must be its browser-ready CSP build. Click its counter and record
+the actual browser/version and input hashes. This fixture uses synthetic admission;
+also verify the real Core gateway and authenticated application separately.
+
 Keep generated build/test output in `build/` or `dist/`, local reports in `.local/`,
 and issue working state in `.issues/`. Business fixtures belong in tests; public
 examples must use public SDK/provider interfaces.

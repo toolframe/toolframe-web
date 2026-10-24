@@ -7,8 +7,12 @@ request deadline. Direct requests to the provider's loopback listener fail
 without a current Core-issued reference. Browser cookies, Authorization,
 forwarded identity and client-supplied Core context headers are stripped.
 
-Handler admission checks resource and route scopes before calling application
-code. Each `ctx.call` checks the method's business scopes and the owner's declared
+Before reading or parsing a handler's body, the provider checks identity,
+resource, route, method and scopes with Core. This authorization phase does not
+allow service calls. Unsafe requests then parse within fixed limits and complete
+admission with CSRF/revision proofs, rechecking authorization. The displayed
+permissions use that admission's principal, including authenticated resources in
+public mode. Each `ctx.call` checks the method's business scopes and the owner's declared
 service relationship again. GET/HEAD calls must target read-only methods. Internal
 and system service audiences cannot be called through Web. Resource
 `access="authenticated"` additionally requires a signed-in visitor even when the
@@ -30,7 +34,9 @@ validate them in a browser. CSP and worker processes do not sandbox trusted
 plugins sharing the same origin.
 
 Default limits are 8 MiB request bodies, 30 seconds and 64 in-flight Core Web
-requests. Forms allow 128 fields, eight uploads and 4 MiB per file. Duplicate form
+requests. URL-encoded and multipart forms both allow 128 ordinary fields, eight
+uploads and 4 MiB per file. Names are limited to 256 UTF-8 bytes and ordinary
+values to 64 KiB. Invalid URL-encoded UTF-8/percent encoding and duplicate form
 names are rejected; use JSON arrays. Rendered responses are limited to 8 MiB.
 At most eight synchronous handlers execute; timed-out threads retain their slots
 until they exit, and their request contexts close immediately. Use asynchronous

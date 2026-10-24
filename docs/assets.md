@@ -97,6 +97,24 @@ set obeys the current resource access policy and is removed when no longer
 referenced. Core restart may end previous-set admission early.
 
 `visibility="inherit"` authenticates before both bytes and 304 responses and uses
-private no-store caching. Explicit `public` assets use immutable caching and can
-be read without a session while the app is enabled. Never place secrets or user
-records in a public asset set. HTML and fragments always use private no-store.
+private no-store caching. Explicit `public` assets can be read without a session
+while the app is enabled. Non-script files use immutable caching; JavaScript
+revalidates on every use with an ETag covering bytes and current response policy.
+Never place secrets or user
+records in a public asset set. Handler HTML and fragments always use private no-store.
+
+## Worker response policy
+
+Enable `worker-src: ("'self'",)` in `WebApp.csp` to create same-origin classic or
+module Workers. Declare each Worker, import, fetched asset and license in the
+manifest. Worker scripts use the current app's script/connect policy because the
+Worker executes under its script response's CSP. This applies to all JavaScript
+responses and does not vary with `Sec-Fetch-Dest`, avoiding ambiguous cache
+variants. A policy-only change changes the ETag even when the asset digest stays
+the same. Retained scripts also use the current policy. WASM compilation requires
+an explicit `'wasm-unsafe-eval'` script capability.
+
+HTML, SVG and other non-script asset responses keep `default-src 'none'` and
+`sandbox`; enabling a Worker does not enable active documents. Service Workers
+remain outside Web contract v1. Verify selected library recipes in a browser;
+declaring an asset does not establish that a library works under its CSP.
