@@ -1,0 +1,45 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "toolframe-web"
+version = "0.1.0"
+description = "HTML applications and sealed browser assets for Toolframe"
+readme = "README.md"
+license = "Apache-2.0 AND MIT"
+license-files = ["LICENSE", "NOTICE", "src/toolframe_web/templates/notes/LICENSE"]
+authors = [{ name = "byfb", email = "62798989+byfb@users.noreply.github.com" }]
+requires-python = ">=3.14"
+dependencies = ["toolframe-sdk==0.4.1", "starlette>=0.52,<1", "uvicorn==0.42.0", "jinja2>=3.1.6,<4", "python-multipart>=0.0.22,<1"]
+
+[project.urls]
+Homepage = "https://github.com/toolframe/toolframe-web"
+Repository = "https://github.com/toolframe/toolframe-web"
+Documentation = "https://github.com/toolframe/toolframe-web#readme"
+Issues = "https://github.com/toolframe/toolframe-web/issues"
+
+[project.entry-points."toolframe.plugins"]
+web = "toolframe_web.plugin:plugin"
+
+[project.scripts]
+toolframe-web = "toolframe_web.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "pytest-asyncio>=1,<2", "httpx>=0.28,<1", "ruff==0.16.8"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py314"
+
+[tool.uv.sources]
+toolframe-sdk = { path = "../toolframe-sdk", editable = true }
+
+[project.optional-dependencies]
+authoring = ["tomlkit>=0.13,<1"]
+
+[tool.hatch.build.targets.wheel.extra-metadata]
+"authoring.json" = "toolframe-authoring.json"

@@ -1,0 +1,7 @@
+toolframe-web
+Copyright 2026 byfb
+
+The Notes template under src/toolframe_web/templates/notes/ is licensed under
+the MIT License. Generated projects retain its LICENSE. The provider implementation
+remains Apache-2.0. Distribution metadata uses Apache-2.0 AND MIT for these
+separately licensed files.
