@@ -14,10 +14,12 @@ def test_manifest_and_generator_are_packaged_without_source_pyproject(tmp_path):
         installed.read_text("extra_metadata/toolframe-authoring.json")
     )
     assert manifest["templates"][0]["id"] == "notes"
+    assert manifest["requires_core"] == ">=0.8,<1"
     assert manifest["prepare"]["entrypoint"] == "toolframe_web.authoring:prepare"
     generate(destination=tmp_path, parameters={"name": "customer-notes"})
     project = tomllib.loads((tmp_path / "pyproject.toml").read_text())
     assert project["project"]["name"] == "toolframe-customer-notes"
+    assert project["project"]["dependencies"] == ["toolframe-sdk>=0.4.1,<1"]
     assert project["project"]["optional-dependencies"]["web"] == [
         f"toolframe-web=={installed.version}"
     ]
