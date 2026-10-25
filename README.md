@@ -58,3 +58,6 @@ The provider is Apache-2.0 licensed; the packaged Notes template is MIT-licensed
 and generated projects retain its license. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
 Third-party assets retain their own licenses. Development instructions are in
 [Contributing](CONTRIBUTING.md).
+
+Plugin dependencies allow compatible SDK 0.x updates from the declared minimum.
+See the [SDK compatibility policy](https://github.com/toolframe/toolframe-sdk/blob/main/docs/compatibility.md) for API guarantees and minimum/latest verification.
