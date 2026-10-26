@@ -1,7 +1,7 @@
 # Releasing Toolframe Web
 
 The distribution is `toolframe-web`; `pyproject.toml` defines its version.
-Publish SDK 0.4.1 before Web 0.1.0. Core 0.8 consumes the Web authoring manifest
+Web requires SDK `>=0.4.1,<1`. Core `>=0.8,<1` consumes the Web authoring manifest
 and provides the runtime gateway.
 
 Run [CI validation](ci.md) and the affected installed-application and browser
@@ -32,7 +32,7 @@ After publication, verify public-index installation in a new environment:
 
 ```sh
 uv venv --python 3.14.7 build/consumer
-uv pip install --python build/consumer/bin/python 'toolframe-web[authoring]==0.1.0'
+uv pip install --python build/consumer/bin/python 'toolframe-web[authoring]==0.1.1'
 uv pip check --python build/consumer/bin/python
 ```
 

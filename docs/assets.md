@@ -11,7 +11,7 @@ authoring manifest. Generated projects declare the selected package version:
 
 ```toml
 [tool.toolframe.authoring]
-source = "pypi:toolframe-web==0.1.0"
+source = "pypi:toolframe-web==0.1.1"
 ```
 
 Core resolves that distribution in an isolated authoring environment, invokes its

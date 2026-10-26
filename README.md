@@ -11,13 +11,13 @@ template from its package; an initialized application or enabled provider is not
 needed for this authoring step:
 
 ```sh
-toolframe --home APP template show toolframe-web/notes --from pypi:toolframe-web==0.1.0 --json
-toolframe --home APP plugin new notes --from pypi:toolframe-web==0.1.0 --template toolframe-web/notes
+toolframe --home APP template show toolframe-web/notes --from pypi:toolframe-web==0.1.1 --json
+toolframe --home APP plugin new notes --from pypi:toolframe-web==0.1.1 --template toolframe-web/notes
 toolframe --home APP web prepare APP/plugins/notes
 
 # Start APP separately, then explicitly install its runtime providers:
 toolframe --home APP plugin add pypi:toolframe-sql-sqlite==0.4.0 --enable
-toolframe --home APP plugin add pypi:toolframe-web==0.1.0 --enable
+toolframe --home APP plugin add pypi:toolframe-web==0.1.1 --enable
 # Install the wheel path printed by prepare:
 toolframe --home APP plugin add APP/plugins/notes/build/web/toolframe_notes-0.1.0-py3-none-any.whl --enable
 ```
