@@ -6,7 +6,7 @@ From the application directory:
 
 ```sh
 toolframe web prepare ./plugins/web-notes
-toolframe plugin add pypi:toolframe-web==0.1.0 --enable
+toolframe plugin add pypi:toolframe-web==0.1.1 --enable
 # Install the wheel path printed by prepare:
 toolframe plugin add wheel:./plugins/web-notes/build/web/toolframe_web_notes-0.1.0-py3-none-any.whl --enable
 ```
